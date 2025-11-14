@@ -1,0 +1,106 @@
+name: "Cobol-like-Java — Build + ProofLedger + Auto Release"
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - "src/**"
+      - "example.cobj"
+      - ".github/workflows/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cobol-like-java-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-3os:
+    name: "Build — ${{ matrix.os }}"
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        os: [ ubuntu-latest, macos-latest, windows-latest ]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ------------------------------------------
+      # Install JDK (Ubuntu only)
+      # ------------------------------------------
+      - name: Install Java (Ubuntu Only)
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      # ------------------------------------------
+      # Build on Ubuntu
+      # ------------------------------------------
+      - name: Build (Ubuntu Only)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          mkdir -p out
+          javac src/*.java -d out
+          jar --create --file cobol-like-java.jar -C out .
+
+      # ------------------------------------------
+      # Skip build on other OS
+      # ------------------------------------------
+      - name: Skip Build (non-Ubuntu)
+        if: matrix.os != 'ubuntu-latest'
+        run: |
+          echo "Java build skipped for ${{ matrix.os }}" > skip.txt
+
+      # ------------------------------------------
+      # Generate ProofLedger
+      # ------------------------------------------
+      - name: Generate ProofLedger
+        run: |
+          echo "Repository: Cobol-like-Java" > proofledger-${{ matrix.os }}-${{ github.sha }}.txt
+          echo "Commit: ${{ github.sha }}" >> proofledger-${{ matrix.os }}-${{ github.sha }}.txt
+          echo "OS: ${{ matrix.os }}" >> proofledger-${{ matrix.os }}-${{ github.sha }}.txt
+          echo "Build: $( [ '${{ matrix.os }}' = 'ubuntu-latest' ] && echo OK || echo SKIPPED )" >> proofledger-${{ matrix.os }}-${{ github.sha }}.txt
+
+      # ------------------------------------------
+      # Upload artifacts
+      # ------------------------------------------
+      - name: Upload JAR (Ubuntu Only)
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: cobol-like-java-jar-${{ github.sha }}
+          path: cobol-like-java.jar
+
+      - name: Upload ProofLedger
+        uses: actions/upload-artifact@v4
+        with:
+          name: proofledger-${{ matrix.os }}-${{ github.sha }}
+          path: proofledger-${{ matrix.os }}-${{ github.sha }}.txt
+
+  # -------------------------------------------------
+  # Auto Release
+  # -------------------------------------------------
+  release:
+    needs: build-3os
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Publish Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: auto-${{ github.sha }}
+          name: "Auto Release — ${{ github.sha }}"
+          files: artifacts/**
