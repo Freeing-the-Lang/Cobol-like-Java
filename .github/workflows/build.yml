@@ -23,22 +23,23 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     strategy:
+      fail-fast: false
       matrix:
         os: [ ubuntu-latest, macos-latest, windows-latest ]
 
     steps:
-      # ----------------------------------------------
+      # ----------------------------------------------------------
       # Checkout
-      # ----------------------------------------------
+      # ----------------------------------------------------------
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
 
-      # ----------------------------------------------
-      # Install Java (Ubuntu Only)
-      # ----------------------------------------------
+      # ----------------------------------------------------------
+      # Install Java (Ubuntu)
+      # ----------------------------------------------------------
       - name: Install Java (Ubuntu Only)
         if: matrix.os == 'ubuntu-latest'
         uses: actions/setup-java@v4
@@ -47,9 +48,9 @@ jobs:
           distribution: 'temurin'
 
 
-      # ----------------------------------------------
-      # Build (Ubuntu Only)
-      # ----------------------------------------------
+      # ----------------------------------------------------------
+      # Build JAR (Ubuntu Only)
+      # ----------------------------------------------------------
       - name: Build (Ubuntu Only)
         if: matrix.os == 'ubuntu-latest'
         run: |
@@ -58,69 +59,62 @@ jobs:
           jar --create --file cobol-like-java-${{ github.sha }}.jar -C out .
 
 
-      # ----------------------------------------------
+      # ----------------------------------------------------------
       # Build Skip (macOS/Windows)
-      # ----------------------------------------------
+      # ----------------------------------------------------------
       - name: Skip Build (Non-Ubuntu)
         if: matrix.os != 'ubuntu-latest'
         run: |
           echo "Java build skipped for ${{ matrix.os }}" > skip.txt
 
 
-      # ----------------------------------------------
-      # ProofLedger (Ubuntu)
-      # ----------------------------------------------
-      - name: ProofLedger (Ubuntu)
-        if: matrix.os == 'ubuntu-latest'
+      # ----------------------------------------------------------
+      # ProofLedger (UNIX shells)
+      # ----------------------------------------------------------
+      - name: ProofLedger (macOS / Ubuntu)
+        if: matrix.os != 'windows-latest'
         shell: bash
         run: |
-          echo "Repository: Cobol-like-Java" > proofledger-${{ matrix.os }}-${{ github.sha }}.txt
-          echo "Commit: ${{ github.sha }}" >> proofledger-${{ matrix.os }}-${{ github.sha }}.txt
-          echo "OS: ${{ matrix.os }}" >> proofledger-${{ matrix.os }}-${{ github.sha }}.txt
-          echo "Build: OK" >> proofledger-${{ matrix.os }}-${{ github.sha }}.txt
+          PL="proofledger-${{ matrix.os }}-${{ github.sha }}.txt"
+          echo "Repository: Cobol-like-Java" > $PL
+          echo "Commit: ${{ github.sha }}" >> $PL
+          echo "OS: ${{ matrix.os }}" >> $PL
+          if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+            echo "Build: SUCCESS" >> $PL
+          else
+            echo "Build: SKIPPED" >> $PL
+          fi
 
 
-      # ----------------------------------------------
-      # ProofLedger (Windows, PowerShell)
-      # ----------------------------------------------
+      # ----------------------------------------------------------
+      # ProofLedger (Windows)
+      # ----------------------------------------------------------
       - name: ProofLedger (Windows)
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
-          "Repository: Cobol-like-Java" > "proofledger-${{ matrix.os }}-${{ github.sha }}.txt"
-          "Commit: ${{ github.sha }}" >> "proofledger-${{ matrix.os }}-${{ github.sha }}.txt"
-          "OS: ${{ matrix.os }}" >> "proofledger-${{ matrix.os }}-${{ github.sha }}.txt"
-          "Build: SKIPPED" >> "proofledger-${{ matrix.os }}-${{ github.sha }}.txt"
+          $PL = "proofledger-${{ matrix.os }}-${{ github.sha }}.txt"
+          "Repository: Cobol-like-Java" >  $PL
+          "Commit: ${{ github.sha }}"   >> $PL
+          "OS: ${{ matrix.os }}"        >> $PL
+          "Build: SKIPPED"              >> $PL
 
 
-      # ----------------------------------------------
-      # ProofLedger (macOS)
-      # ----------------------------------------------
-      - name: ProofLedger (macOS)
-        if: matrix.os == 'macos-latest'
-        shell: bash
-        run: |
-          echo "Repository: Cobol-like-Java" > proofledger-${{ matrix.os }}-${{ github.sha }}.txt
-          echo "Commit: ${{ github.sha }}" >> proofledger-${{ matrix.os }}-${{ github.sha }}.txt
-          echo "OS: ${{ matrix.os }}" >> proofledger-${{ matrix.os }}-${{ github.sha }}.txt
-          echo "Build: SKIPPED" >> proofledger-${{ matrix.os }}-${{ github.sha }}.txt
-
-
-      # ----------------------------------------------
-      # Upload artifact: JAR (Ubuntu)
-      # ----------------------------------------------
-      - name: Upload JAR (Ubuntu Only)
+      # ----------------------------------------------------------
+      # Upload JAR (Ubuntu)
+      # ----------------------------------------------------------
+      - name: Upload JAR
         if: matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@v4
         with:
-          name: cobol-like-java-jar-${{ github.sha }}
+          name: cobol-java-jar-${{ github.sha }}
           path: cobol-like-java-${{ github.sha }}.jar
 
 
-      # ----------------------------------------------
-      # Upload skip file (Non-Ubuntu)
-      # ----------------------------------------------
-      - name: Upload Skip File (Non-Ubuntu)
+      # ----------------------------------------------------------
+      # Upload Skip file
+      # ----------------------------------------------------------
+      - name: Upload Skip
         if: matrix.os != 'ubuntu-latest'
         uses: actions/upload-artifact@v4
         with:
@@ -128,9 +122,9 @@ jobs:
           path: skip.txt
 
 
-      # ----------------------------------------------
-      # Upload ProofLedger (All OS)
-      # ----------------------------------------------
+      # ----------------------------------------------------------
+      # Upload ProofLedger
+      # ----------------------------------------------------------
       - name: Upload ProofLedger
         uses: actions/upload-artifact@v4
         with:
@@ -140,20 +134,18 @@ jobs:
 
 
   # ====================================================================
-  #  AUTO RELEASE
+  # RELEASE JOB
   # ====================================================================
   release:
     needs: build-3os
     runs-on: ubuntu-latest
 
     steps:
-      # Download all artifacts
       - name: Download All Artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
 
-      # Release (only upload JAR + all ProofLedgers)
       - name: Publish Release
         uses: softprops/action-gh-release@v2
         with:
@@ -162,3 +154,4 @@ jobs:
           files: |
             artifacts/**/cobol-like-java-*.jar
             artifacts/**/*.txt
+
